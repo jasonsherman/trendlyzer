@@ -1,0 +1,16 @@
+# Ignore uploads and generated reports
+venv/
+uploads/
+reports/
+static/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore environment variable files
+.env
+
+# Ignore VS Code workspace settings (optional)
+.vscode/
+*.code-workspace

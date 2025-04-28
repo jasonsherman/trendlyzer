@@ -1,0 +1,11 @@
+Flask
+pdfplumber
+python-docx
+openpyxl
+pandas
+numpy
+matplotlib
+spacy
+keybert
+fpdf2
+python-dotenv
