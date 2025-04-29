@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="description"
+        content="Trendlyzer generates AI-powered business insights and beautiful PDF reports from your documents." />
+    <meta name="keywords"
+        content="Trendlyzer, AI reports, business insights, customer data analysis, document trends" />
+    <meta property="og:title" content="Trendlyzer - AI Document Analysis & Insights" />
+    <meta property="og:description"
+        content="Upload a document, extract insights, generate a PDF report with Trendlyzer." />
+    <meta property="og:image" content="/static/images/trendlyzer-og.png" />
+    <meta property="og:url" content="https://trendlyzer.com" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Trendlyzer - AI Document Analysis & Insights" />
+    <meta name="twitter:description"
+        content="Upload files. Extract trends. Generate PDF reports. Get real business value from your data." />
+    <meta name="twitter:image" content="/static/images/trendlyzer-twitter.png" />
+    <link rel="shortcut icon" href="/static/images/favicon.ico" type="image/x-icon" />
+    <title>Trendlyzer</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+
+<body>
+    <header>
+        <div class="nav-container">
+            <a href="/">
+                <img src="/static/images/trendlyzer-logo.png" alt="Trendlyzer Logo" />
+            </a>
+            <a href="https://vengoai.com" target="_blank" class="vengo-link">Vengo AI</a>
+        </div>
+    </header>
+    <section class="hero">
+        <h1>Generate AI-Powered Business Reports</h1>
+        <p>Upload your customer data. We’ll analyze trends, keywords, themes, and generate a beautiful PDF report.</p>
+    </section>
+    <div class="upload-box">
+        <form id="uploadForm" enctype="multipart/form-data">
+            <h2>Upload Your File</h2>
+
+            <label for="company_name">Enter Your Name for the Report:</label>
+            <input type="text" name="company_name" placeholder="Company Name or Full Name" required>
+
+            <input type="file" name="file" required>
+
+            <p class="file-info">PDF, DOCX, XLS, TXT files</p>
+
+            <input type="submit" value="Upload">
+        </form>
+
+        <div id="progressArea" style="display:none;">
+            <div class="progress-text" id="progressText">Starting analysis...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </div>
+
+        <div id="resultArea"></div>
+    </div>
+
+    <!-- Progress bar> -->
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const form = e.target;
+            const formData = new FormData(form);
+            const progressArea = document.getElementById('progressArea');
+            const progressText = document.getElementById('progressText');
+            const progressBar = document.getElementById('progressBar');
+            const resultArea = document.getElementById('resultArea');
+
+            form.style.display = 'none';
+            progressArea.style.display = 'block';
+
+            const messages = [
+                "Analyzing Data...",
+                "Generating Overview...",
+                "Identifying Trends...",
+                "Creating Key Highlights...",
+                "Finding Top Metrics...",
+                "Forming Insights...",
+                "Generating PDF Report..."
+            ];
+
+            let progress = 0;
+            let step = 0;
+            let loopInterval;
+
+            const interval = setInterval(() => {
+                if (step < messages.length) {
+                    progress += 100 / messages.length;
+                    progressBar.style.width = progress + '%';
+                    progressText.textContent = messages[step];
+                    step++;
+                } else {
+                    clearInterval(interval);
+                    progressText.textContent = "Finalizing Report...";
+                    loopInterval = setInterval(() => {
+                        progressBar.style.width = '20%';
+                        setTimeout(() => progressBar.style.width = '80%', 400);
+                        setTimeout(() => progressBar.style.width = '30%', 800);
+                    }, 1200);
+                }
+            }, 1300);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+                .then(res => res.text())
+                .then(html => {
+                    clearInterval(interval);
+                    clearInterval(loopInterval);
+                    progressArea.style.display = 'none';
+                    resultArea.innerHTML = html;
+                })
+                .catch(err => {
+                    clearInterval(interval);
+                    clearInterval(loopInterval);
+                    progressText.textContent = '❌ Error occurred. Please try again.';
+                    console.error(err);
+                });
+        });
+    </script>
+
+
+</body>
+
+</html>

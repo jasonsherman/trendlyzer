@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Trendlyzer Report Results</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="hero">
+        <div class="container">
+            <h1>📊 Trendlyzer Report for {{ company_name }}</h1>
+
+            <div class="report-section">
+                <h2>Overview</h2>
+                <p>{{ overview }}</p>
+            </div>
+
+            <div class="report-section">
+                <h2>Top Keywords</h2>
+                <ul>
+                    {% for keyword, count in top_keywords %}
+                    <li>{{ keyword }} ({{ count }} mentions)</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="report-section">
+                <h2>Detected Themes</h2>
+                <ul>
+                    {% for theme, count in theme_counts.items() %}
+                    <li>{{ theme }} ({{ count }} mentions)</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="report-section download-section">
+                <a href="{{ url_for('static', filename=report_path.split('static/')[1]) }}" class="btn"
+                    target="_blank">📥Download PDF Report</a>
+
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

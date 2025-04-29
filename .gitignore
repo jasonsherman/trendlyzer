@@ -1,8 +1,7 @@
-# Ignore uploads and generated reports
+# Ignore virtual environments and generated reports
 venv/
 uploads/
-reports/
-static/
+static/reports/
 
 # Ignore Python cache files
 __pycache__/
