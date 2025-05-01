@@ -1,5 +1,7 @@
 Flask
+fpdf2
 pdfplumber
+PyPDF2
 python-docx
 openpyxl
 pandas
@@ -7,5 +9,7 @@ numpy
 matplotlib
 spacy
 keybert
-fpdf2
+scikit-learn
+sentence-transformers
+transformers
 python-dotenv

@@ -13,70 +13,95 @@
     <meta property="og:title" content="Trendlyzer - AI Document Analysis & Insights" />
     <meta property="og:description"
         content="Upload a document, extract insights, generate a PDF report with Trendlyzer." />
-    <meta property="og:image" content="/static/images/trendlyzer-og.png" />
+    <meta property="og:image" content="/static/images/trendlyzer-1200-630.png" />
     <meta property="og:url" content="https://trendlyzer.com" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Trendlyzer - AI Document Analysis & Insights" />
     <meta name="twitter:description"
         content="Upload files. Extract trends. Generate PDF reports. Get real business value from your data." />
-    <meta name="twitter:image" content="/static/images/trendlyzer-twitter.png" />
+    <meta name="twitter:image" content="/static/images/trendlyzer-1200-675.png" />
     <link rel="shortcut icon" href="/static/images/favicon.ico" type="image/x-icon" />
     <title>Trendlyzer</title>
     <link rel="stylesheet" href="/static/css/style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
 </head>
 
 <body>
     <header>
         <div class="nav-container">
-            <a href="/">
+            <a href="/" class="logo-link">
                 <img src="/static/images/trendlyzer-logo.png" alt="Trendlyzer Logo" />
             </a>
-            <a href="https://vengoai.com" target="_blank" class="vengo-link">Vengo AI</a>
+            <a href="https://vengoai.com" target="_blank" class="vengo-link">
+                <i class="fas fa-external-link-alt"></i> Vengo AI
+            </a>
         </div>
     </header>
-    <section class="hero">
-        <h1>Generate AI-Powered Business Reports</h1>
-        <p>Upload your customer data. We’ll analyze trends, keywords, themes, and generate a beautiful PDF report.</p>
-    </section>
-    <div class="upload-box">
-        <form id="uploadForm" enctype="multipart/form-data">
-            <h2>Upload Your File</h2>
 
-            <label for="company_name">Enter Your Name for the Report:</label>
-            <input type="text" name="company_name" placeholder="Company Name or Full Name" required>
-
-            <input type="file" name="file" required>
-
-            <p class="file-info">PDF, DOCX, XLS, TXT files</p>
-
-            <input type="submit" value="Upload">
-        </form>
-
-        <div id="progressArea" style="display:none;">
-            <div class="progress-text" id="progressText">Starting analysis...</div>
-            <div class="progress-bar-container">
-                <div class="progress-bar" id="progressBar"></div>
+    <div class="main-content">
+        <section class="hero">
+            <h1>Generate Beautiful Business Reports with AI</h1>
+            <p>Upload your customer data. We'll analyze trends, keywords, themes, and generate a beautiful PDF report
+                automatically.
+            </p>
+        </section>
+        <div class="upload-box" style="min-height: 480px;">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <h2>Upload Your File</h2>
+                <div class="form-group">
+                    <label for="company_name">
+                        <i class="fas fa-pen-to-square"></i> Enter The Name for the Report
+                    </label>
+                    <input type="text" name="company_name" placeholder="e.g. Vengo AI or Jason Sherman" required>
+                </div>
+                <div class="form-group">
+                    <label for="file">
+                        <i class="fas fa-file-upload"></i> Choose Your File
+                    </label>
+                    <input type="file" name="file" required>
+                </div>
+                <p class="file-types-note">
+                    <i class="fas fa-info-circle"></i> Supported file types: PDF, DOC, DOCX, XLS, XLSX, TXT, CSV, MD,
+                    RTF, PPT, PPTX
+                </p>
+                <button type="submit" class="submit-btn">
+                    <i class="fas fa-upload"></i> Upload & Analyze
+                </button>
+            </form>
+            <div class="progress-area-wrapper" style="display:none;">
+                <div id="progressArea">
+                    <div class="progress-text" id="progressText">Starting analysis...</div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                </div>
             </div>
+            <div id="resultArea"></div>
         </div>
-
-        <div id="resultArea"></div>
     </div>
 
-    <!-- Progress bar> -->
+    <footer>
+        <div class="footer-content">
+            <span class="copyright">© 2025 Vengo AI</span>
+            <a href="https://vengoai.com" target="_blank" class="footer-link">Try our AI Agents for Free!</a>
+        </div>
+    </footer>
+
     <script>
         document.getElementById('uploadForm').addEventListener('submit', function (e) {
             e.preventDefault();
-
             const form = e.target;
             const formData = new FormData(form);
             const progressArea = document.getElementById('progressArea');
             const progressText = document.getElementById('progressText');
             const progressBar = document.getElementById('progressBar');
             const resultArea = document.getElementById('resultArea');
-
+            const heroSection = document.querySelector('.hero');
+            const uploadForm = document.getElementById('uploadForm');
             form.style.display = 'none';
+            document.querySelector('.progress-area-wrapper').style.display = 'flex';
             progressArea.style.display = 'block';
-
+            if (heroSection) heroSection.style.display = 'block';
             const messages = [
                 "Analyzing Data...",
                 "Generating Overview...",
@@ -86,11 +111,9 @@
                 "Forming Insights...",
                 "Generating PDF Report..."
             ];
-
             let progress = 0;
             let step = 0;
             let loopInterval;
-
             const interval = setInterval(() => {
                 if (step < messages.length) {
                     progress += 100 / messages.length;
@@ -107,28 +130,37 @@
                     }, 1200);
                 }
             }, 1300);
-
             fetch('/upload', {
                 method: 'POST',
                 body: formData
             })
-                .then(res => res.text())
+                .then(res => {
+                    if (res.redirected) {
+                        window.location.href = res.url;
+                    } else {
+                        return res.text();
+                    }
+                })
                 .then(html => {
                     clearInterval(interval);
                     clearInterval(loopInterval);
                     progressArea.style.display = 'none';
-                    resultArea.innerHTML = html;
+                    document.querySelector('.progress-area-wrapper').style.display = 'none';
+                    if (uploadForm) uploadForm.style.display = '';
+                    if (heroSection) heroSection.style.display = 'block';
+                    if (html) resultArea.innerHTML = html;
                 })
                 .catch(err => {
                     clearInterval(interval);
                     clearInterval(loopInterval);
                     progressText.textContent = '❌ Error occurred. Please try again.';
+                    document.querySelector('.progress-area-wrapper').style.display = 'none';
+                    if (uploadForm) uploadForm.style.display = '';
+                    if (heroSection) heroSection.style.display = 'block';
                     console.error(err);
                 });
         });
     </script>
-
-
 </body>
 
 </html>
