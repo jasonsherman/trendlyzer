@@ -11,7 +11,7 @@ from nltk.corpus import stopwords
 import nltk
 import os
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import List, Dict, Tuple, Set, Optional
 from dataclasses import dataclass
 import re
@@ -616,12 +616,58 @@ def upload_file() -> str:
             word_count = len(content.split())
             line_count = len(content.splitlines())
 
-            if "Agent:" in content and content.count("Agent:") >= 5:
-                conversations = split_conversations(content)
-                mode = "Conversational Document"
-            else:
-                conversations = [content]
-                mode = "Normal Document"
+            lines = [line.rstrip("\n") for line in content.splitlines()]
+            # Detect if it's a conversational document
+            has_agent = any(re.match(r"Agent:", line) for line in lines)
+            has_other_speaker = any(re.match(r"[^:]{1,40}:", line) and not line.startswith("Agent:") for line in lines)
+            mode = "Conversational Document" if has_agent and has_other_speaker else "Normal Document"
+
+            conversation_ids = []
+            conversations = []
+            current_conv_id = -1
+            current_user = None
+            current_conversation = ""
+
+            email_pattern = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+            phone_pattern = re.compile(r"(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3}[-.\s]?\d{3,4}[-.\s]?\d{0,4}")
+
+            conv_has_email = defaultdict(bool)
+            conv_has_phone = defaultdict(bool)
+            conv_has_followup = defaultdict(bool)
+
+            followup_keywords = re.compile(r"\b(follow up|schedule|demo|call|reach out|appointment|book)\b", re.IGNORECASE)
+
+            # Parse the file to identify conversations and collect stats
+            for line in lines:
+                if not line.strip():
+                     continue  # skip empty lines
+                if ":" not in line:
+                    continue  # malformed line
+                
+                speaker, message = line.split(":", 1)
+                speaker = speaker.strip()
+                message = message.strip()
+                current_conversation += message
+
+                if speaker == "Agent":
+                    if followup_keywords.search(message):
+                        conv_has_followup[current_conv_id] = True
+                else:
+                    if speaker != current_user:
+                        current_user = speaker
+                        current_conv_id += 1
+                        conversation_ids.append(current_conv_id)
+                        conversations.append(current_conversation)
+                        current_conversation = ""
+
+                    # Detect email and phone in user messages
+                    if email_pattern.search(message):
+                        conv_has_email[current_conv_id] = True
+                    if phone_pattern.search(message):
+                        # Ensure we don't count extremely short "numbers"
+                        nums = re.sub(r"\D", "", phone_pattern.search(message).group())
+                        if len(nums) >= 7:
+                            conv_has_phone[current_conv_id] = True
 
             all_keywords = []
             for convo in conversations:
@@ -639,25 +685,15 @@ def upload_file() -> str:
 
             # For business docs, use improved theme detection
             if mode == "Conversational Document":
-                email_leads = sum(contains_email(convo)
-                                  for convo in conversations)
-                phone_leads = sum(contains_phone(convo)
-                                  for convo in conversations)
-                # Debug print: show first 5 detected emails/phones
-                email_matches = [
-                    convo for convo in conversations if contains_email(convo)]
-                phone_matches = [
-                    convo for convo in conversations if contains_phone(convo)]
-                print("First 5 conversations with detected emails:",
-                      email_matches[:5])
-                print("First 5 conversations with detected phones:",
-                      phone_matches[:5])
-                total_conversations = len(conversations)
+                email_leads = sum(conv_has_email.values())
+                phone_leads = sum(conv_has_phone.values())
+                followup_conv_count = sum(conv_has_followup.values())
+                total_conversations = len(conversation_ids)
                 email_conversion_rate = (
                     email_leads / total_conversations) * 100 if total_conversations else 0
                 phone_conversion_rate = (
                     phone_leads / total_conversations) * 100 if total_conversations else 0
-                follow_up_rate = 0
+                follow_up_rate = (followup_conv_count / total_conversations * 100) if total_conversations else 0
                 theme_counts_final = theme_counts
             else:
                 email_conversion_rate = 0
