@@ -9,7 +9,6 @@ from sumy.parsers.plaintext import PlaintextParser
 from wordcloud import WordCloud
 from nltk.corpus import stopwords
 import nltk
-import matplotlib.pyplot as plt
 import os
 import logging
 from collections import Counter
@@ -27,6 +26,7 @@ import spacy
 from keybert import KeyBERT
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 # Configure logging
 logging.basicConfig(
@@ -100,9 +100,12 @@ try:
 except LookupError:
     nltk.download('punkt', download_dir=user_nltk_data)
 
+try:
+    nltk.data.find('tokenizers/punkt_tab')
+except LookupError:
+    nltk.download('punkt_tab')
+
 # Helper for word frequency
-
-
 def get_word_frequencies(text: str, top_n: int = 10) -> list:
     words = [w.lower() for w in re.findall(r'\b\w+\b', text)]
     stop_words = set(stopwords.words('english'))
@@ -226,6 +229,7 @@ class ReportGenerator:
         plt.tight_layout()
 
         chart_path = os.path.join(REPORTS_FOLDER, filename)
+        os.makedirs(os.path.dirname(chart_path), exist_ok=True)
         plt.savefig(chart_path)
         plt.close()
 
@@ -601,6 +605,7 @@ def upload_file() -> str:
         try:
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
             file.save(filepath)
             file_extension = filename.rsplit('.', 1)[1].lower()
 
