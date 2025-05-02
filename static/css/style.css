@@ -480,3 +480,19 @@ footer {
         max-width: 100%;
     }
 }
+
+.progress-area-wrapper {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    background: rgba(255,255,255,0.10);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    margin: 0 !important;
+    padding: 0 !important;
+}

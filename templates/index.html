@@ -82,15 +82,15 @@
                     <i class="fas fa-upload"></i> Upload & Analyze
                 </button>
             </form>
-            <div class="progress-area-wrapper" style="display:none;">
-                <div id="progressArea">
-                    <div class="progress-text" id="progressText">Starting analysis...</div>
-                    <div class="progress-bar-container">
-                        <div class="progress-bar" id="progressBar"></div>
-                    </div>
-                </div>
-            </div>
             <div id="resultArea"></div>
+        </div>
+    </div>
+    <div class="progress-area-wrapper" style="display:none;">
+        <div id="progressArea">
+            <div class="progress-text" id="progressText">Starting analysis...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
         </div>
     </div>
 
@@ -106,12 +106,22 @@
             e.preventDefault();
             const form = e.target;
             const formData = new FormData(form);
+            const progressAreaWrapper = document.querySelector('.progress-area-wrapper');
             const progressArea = document.getElementById('progressArea');
             const progressText = document.getElementById('progressText');
             const progressBar = document.getElementById('progressBar');
             const resultArea = document.getElementById('resultArea');
             const heroSection = document.querySelector('.hero');
             const uploadForm = document.getElementById('uploadForm');
+            const mainContent = document.querySelector('.main-content');
+
+            if (mainContent) mainContent.style.display = 'none';
+            if (heroSection) heroSection.style.display = 'none';
+            if (uploadForm) uploadForm.style.display = 'none';
+
+            progressAreaWrapper.style.display = 'flex';
+            progressArea.style.display = 'block';
+
             form.style.display = 'none';
             document.querySelector('.progress-area-wrapper').style.display = 'flex';
             progressArea.style.display = 'block';
@@ -168,7 +178,10 @@
                     clearInterval(interval);
                     clearInterval(loopInterval);
                     progressText.textContent = '❌ Error occurred. Please try again.';
+                    progressAreaWrapper.style.display = 'none';
                     document.querySelector('.progress-area-wrapper').style.display = 'none';
+                    if (mainContent) mainContent.style.display = '';
+                    if (uploadForm) uploadForm.style.display = '';
                     if (uploadForm) uploadForm.style.display = '';
                     if (heroSection) heroSection.style.display = 'block';
                     console.error(err);

@@ -686,14 +686,14 @@ def upload_file() -> str:
                 conversations=conversations,
                 full_text=content
             )
-            return render_template(
-                'results.html',
-                company_name=company_name,
-                overview=overview,
-                top_keywords=top_keywords,
-                theme_counts=theme_counts_final,
-                report_path=report_path
-            )
+            session['results'] = {
+                'company_name': company_name,
+                'overview': overview,
+                'top_keywords': top_keywords,
+                'theme_counts': theme_counts_final,
+                'report_path': report_path
+            }
+            return redirect(url_for('results_page'))
 
         except Exception as e:
             logger.error(f"Error processing file: {e}")
