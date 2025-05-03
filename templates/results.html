@@ -4,20 +4,49 @@
 <head>
     <meta charset="UTF-8">
     <title>Trendlyzer Report Results</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
 </head>
 
 <body>
-    <div class="hero">
-        <div class="container">
-            <h1>📊 Trendlyzer Report for {{ company_name }}</h1>
-
-            <div class="report-section">
+    <header>
+        <div class="nav-container">
+            <a href="/" class="logo-link">
+                <img src="/static/images/trendlyzer-logo.png" alt="Trendlyzer Logo" />
+            </a>
+            <a href="https://vengoai.com" target="_blank" class="vengo-link">
+                <i class="fas fa-external-link-alt"></i> Vengo AI
+            </a>
+        </div>
+    </header>
+    <div class="results-dashboard-bg">
+        <div class="results-dashboard-header">
+            <a href="{{ url_for('static', filename=report_path.split('static/')[1]) }}" class="btn download-btn"
+                target="_blank">
+                <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"
+                        style="vertical-align:middle;">
+                        <defs>
+                            <linearGradient id="downloadGradient" x1="0" y1="0" x2="22" y2="22"
+                                gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#1db86a" />
+                                <stop offset="0.5" stop-color="#1de9b6" />
+                                <stop offset="1" stop-color="#2c5191" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M11 2v12m0 0l-4-4m4 4l4-4M4 18h14" stroke="url(#downloadGradient)" stroke-width="2.2"
+                            stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    Download PDF Report
+                </span>
+            </a>
+        </div>
+        <div class="results-dashboard">
+            <div class="results-card">
                 <h2>Overview</h2>
                 <p>{{ overview }}</p>
             </div>
-
-            <div class="report-section">
+            <div class="results-card">
                 <h2>Top Keywords</h2>
                 <ul>
                     {% for keyword, count in top_keywords %}
@@ -25,8 +54,7 @@
                     {% endfor %}
                 </ul>
             </div>
-
-            <div class="report-section">
+            <div class="results-card">
                 <h2>Detected Themes</h2>
                 <ul>
                     {% for theme, count in theme_counts.items() %}
@@ -34,14 +62,14 @@
                     {% endfor %}
                 </ul>
             </div>
-
-            <div class="report-section download-section">
-                <a href="{{ url_for('static', filename=report_path.split('static/')[1]) }}" class="btn"
-                    target="_blank">📥Download PDF Report</a>
-
-            </div>
         </div>
     </div>
+    <footer>
+        <div class="footer-content">
+            <span class="copyright">© 2025 Vengo AI</span>
+            <a href="https://vengoai.com" target="_blank" class="footer-link">Try our AI Agents for Free!</a>
+        </div>
+    </footer>
 </body>
 
 </html>
