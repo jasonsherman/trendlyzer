@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 from typing import List, Dict, Tuple, Set, Optional
 from dataclasses import dataclass
 from textblob import TextBlob
+from flask_mail import Mail, Message
 import re
 
 # Third-party imports
@@ -28,7 +29,9 @@ from keybert import KeyBERT
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from dotenv import load_dotenv
 
+load_dotenv()
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -510,7 +513,14 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.secret_key = 'your_secret_key_here'
 
-# Load NLP models
+app.config['MAIL_SERVER'] = 'smtp.gmail.com' 
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.getenv("MAIL_USERNAME")
+app.config['MAIL_PASSWORD'] = os.getenv("MAIL_PASSWORD")   # your email password or app password
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv("MAIL_USERNAME")
+
+mail = Mail(app)
 try:
     try:
         nlp = spacy.load("en_core_web_md")
@@ -602,6 +612,27 @@ def home() -> str:
         str: Rendered HTML template
     """
     return render_template('index.html')
+
+def send_email(report_path, company_name) -> str:
+    try:
+        recipient_email = os.getenv("RECEIVER_MAIL")
+        msg = Message(
+            subject=f"Trendlyzer Report for {company_name}",
+            recipients=[recipient_email],
+            body=f"Hello,\n\n Trendlyzer report for {company_name} is attached!"
+        )
+        file_path = report_path.lstrip('/')
+        with open(file_path, 'rb') as fp:
+            msg.attach(
+                filename=os.path.basename(file_path),
+                content_type='application/pdf',
+                data=fp.read()
+            )
+        mail.send(msg)
+        logger.info(f"Report sent to {recipient_email}")
+        return f"EMAIL sent to {recipient_email} with {report_path}"
+    except Exception as e:
+        logger.error(f"Failed to send email: {e}")
 
 
 @app.route('/upload', methods=['POST'])
@@ -756,6 +787,9 @@ def upload_file() -> str:
                 email_conversion_rate = 0
                 phone_conversion_rate = 0
                 follow_up_rate = 0
+                readiness_rate = 0
+                lead_success_rate = 0
+                trust_rate = 0
                 total_conversations = 0
                 theme_counts_final = improved_theme_detection(
                     content, THEME_MAPPING, nlp)
@@ -790,6 +824,7 @@ def upload_file() -> str:
                 'theme_counts': theme_counts_final,
                 'report_path': report_path
             }
+            send_email(report_path, company_name)
             return redirect(url_for('results_page'))
 
         except Exception as e:
