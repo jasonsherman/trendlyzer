@@ -332,6 +332,7 @@ class ReportGenerator:
         plt.tight_layout()
         chart_path = os.path.join(
             REPORTS_FOLDER, f"{os.path.basename(self.filename).replace('.txt', '')}_topwords.png")
+        os.makedirs(os.path.dirname(chart_path), exist_ok=True)
         plt.savefig(chart_path)
         plt.close()
         self.pdf.image(chart_path, w=110)
