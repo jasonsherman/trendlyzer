@@ -14,6 +14,7 @@ import logging
 from collections import Counter, defaultdict
 from typing import List, Dict, Tuple, Set, Optional
 from dataclasses import dataclass
+from textblob import TextBlob
 import re
 
 # Third-party imports
@@ -152,9 +153,15 @@ class ReportMetrics:
     email_conversion_rate: float = 0.0
     phone_conversion_rate: float = 0.0
     follow_up_rate: float = 0.0
+    readiness_rate: float = 0.0
+    trust_rate: float = 0.0
+    lead_success_rate: float = 0.0
+    average_sentiment_score: float = 0.0
+
     mode: str = "Normal Document"
 
 
+                
 class ReportGenerator:
     """Class responsible for generating PDF reports with charts."""
 
@@ -368,6 +375,16 @@ class ReportGenerator:
                     f"- Over {metrics.follow_up_rate:.0f}% of all conversations led to actionable follow-ups"
                 )
                 self._add_section("Top 3 Lead Capture Metrics", lead_metrics)
+                # Top Lead Capture Metrics Chart
+                lead_chart_data = {'Email Provided': metrics.email_conversion_rate,
+                                   'Phone Provided': metrics.phone_conversion_rate, 'Follow-Ups': metrics.follow_up_rate}
+                lead_chart_path = self._create_chart(
+                    lead_chart_data,
+                    'Top Lead Capture Metrics',
+                    f"{os.path.basename(self.filename).replace('.txt', '')}_top_lead_metrics.png"
+                )
+                self.pdf.image(lead_chart_path, w=110)
+                self.pdf.ln(10)
                 # Top Keywords and Conversation Drivers
                 drivers_intro = (
                     "Analyzing word frequency provides insight into what customers care about most. "
@@ -386,19 +403,9 @@ class ReportGenerator:
                     "- Trust Signals Matter: Many customers questioned whether the AI agent was real or human, highlighting the need for credibility-building in conversations."
                 )
                 self._add_section("Trends & Impact on Businesses", trends)
-                # Top Lead Capture Metrics Chart
-                lead_chart_data = {'Email Provided': metrics.email_conversion_rate,
-                                   'Phone Provided': metrics.phone_conversion_rate, 'Follow-Ups': metrics.follow_up_rate}
-                lead_chart_path = self._create_chart(
-                    lead_chart_data,
-                    'Top Lead Capture Metrics',
-                    f"{os.path.basename(self.filename).replace('.txt', '')}_top_lead_metrics.png"
-                )
-                self.pdf.image(lead_chart_path, w=110)
-                self.pdf.ln(10)
                 # Visual Insights Chart (Business Trends Observed)
-                vis_chart_data = {'Lead Capture Success': 78,
-                                  'Customer Readiness': 49, 'Trust Concerns': 36}
+                vis_chart_data = {'Lead Capture Success': metrics.lead_success_rate,
+                                  'Customer Readiness': metrics.readiness_rate, 'Trust Concerns': metrics.trust_rate}
                 vis_chart_path = self._create_chart(
                     vis_chart_data,
                     'Business Trends Observed',
@@ -573,6 +580,19 @@ def extract_text_from_pdf(file_path: str) -> str:
             text += page.get_text()
     return text
 
+def create_conv_record(conv_id, user_name):
+    return {
+        "Conversation ID": conv_id,
+        "User": user_name,
+        "Email Captured": False,
+        "Phone Captured": False,
+        "Lead Capture Success": False,  # Will compute later
+        "Follow‑up": False,
+        "Customer Readiness": False,
+        "Trust Concerns": False,
+        "Sentiment Score": 0.0,
+        "Message Count": 0
+    }
 
 @app.route('/')
 def home() -> str:
@@ -627,53 +647,74 @@ def upload_file() -> str:
             current_conv_id = -1
             current_user = None
             current_conversation = ""
+            all_keywords = []
 
             email_pattern = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
             phone_pattern = re.compile(r"(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3}[-.\s]?\d{3,4}[-.\s]?\d{0,4}")
-
-            conv_has_email = defaultdict(bool)
-            conv_has_phone = defaultdict(bool)
-            conv_has_followup = defaultdict(bool)
-
             followup_keywords = re.compile(r"\b(follow up|schedule|demo|call|reach out|appointment|book)\b", re.IGNORECASE)
+            readiness_keywords = re.compile(r"\b(buy|purchase|ready|interested|go ahead|sign me up|subscribe|order|start|proceed)\b", re.IGNORECASE)
+            trust_keywords = re.compile(r"\b(scam|fake|trust|secure|safety|safe|legit|fraud|privacy|data leak|security)\b", re.IGNORECASE)
+
+
+            # conv_has_email = defaultdict(bool)
+            # conv_has_phone = defaultdict(bool)
+            # conv_has_followup = defaultdict(bool)
+            conv_data = []  
+
+
 
             # Parse the file to identify conversations and collect stats
             for line in lines:
-                if not line.strip():
-                     continue  # skip empty lines
-                if ":" not in line:
-                    continue  # malformed line
-                
-                speaker, message = line.split(":", 1)
-                speaker = speaker.strip()
-                message = message.strip()
+                if not line.strip() or ":" not in line:
+                     continue  # skip empty and malformed lines
+                speaker, message = [x.strip() for x in line.split(":", 1)]
+               
                 current_conversation += message
 
                 if speaker == "Agent":
+                    # If no conversation started yet, skip until user speaks
+                    if current_conv_id < 0:
+                        continue
+                    # Follow‑up detection
                     if followup_keywords.search(message):
-                        conv_has_followup[current_conv_id] = True
+                        conv_data[current_conv_id]["Follow‑up"] = True
+
+                    # Sentiment for agent message
+                    conv_data[current_conv_id]["Sentiment Score"] += TextBlob(message).sentiment.polarity
+                    conv_data[current_conv_id]["Message Count"] += 1
+
                 else:
                     if speaker != current_user:
                         current_user = speaker
                         current_conv_id += 1
                         conversation_ids.append(current_conv_id)
                         conversations.append(current_conversation)
+                        conv_data.append(create_conv_record(current_conv_id, current_user))
+
+                        keywords = kw_model.extract_keywords(current_conversation, top_n=5)
+                        convo_keywords = [categorize_keyword(kw) for kw, _ in keywords]
+                        all_keywords.extend(convo_keywords)
                         current_conversation = ""
 
-                    # Detect email and phone in user messages
+                    # Email / phone
                     if email_pattern.search(message):
-                        conv_has_email[current_conv_id] = True
+                        conv_data[current_conv_id]["Email Captured"] = True
                     if phone_pattern.search(message):
-                        # Ensure we don't count extremely short "numbers"
                         nums = re.sub(r"\D", "", phone_pattern.search(message).group())
                         if len(nums) >= 7:
-                            conv_has_phone[current_conv_id] = True
+                            conv_data[current_conv_id]["Phone Captured"] = True
+                    # Readiness
+                    if readiness_keywords.search(message):
+                        conv_data[current_conv_id]["Customer Readiness"] = True
 
-            all_keywords = []
-            for convo in conversations:
-                keywords = kw_model.extract_keywords(convo, top_n=5)
-                convo_keywords = [categorize_keyword(kw) for kw, _ in keywords]
-                all_keywords.extend(convo_keywords)
+                    # Trust concerns
+                    if trust_keywords.search(message):
+                        conv_data[current_conv_id]["Trust Concerns"] = True
+
+                    # Sentiment
+                    conv_data[current_conv_id]["Sentiment Score"] += TextBlob(message).sentiment.polarity
+                    conv_data[current_conv_id]["Message Count"] += 1
+                    
 
             top_keywords = Counter(all_keywords).most_common(10)
             theme_counts = {}
@@ -685,10 +726,26 @@ def upload_file() -> str:
 
             # For business docs, use improved theme detection
             if mode == "Conversational Document":
-                email_leads = sum(conv_has_email.values())
-                phone_leads = sum(conv_has_phone.values())
-                followup_conv_count = sum(conv_has_followup.values())
-                total_conversations = len(conversation_ids)
+                total_conversations = len(conversations)
+                for d in conv_data:
+                    d["Lead Capture Success"] = d["Email Captured"] or d["Phone Captured"]
+                    # Average sentiment
+                    if d["Message Count"]:
+                        d["Sentiment Score"] = round(d["Sentiment Score"] / d["Message Count"], 3)
+                # Aggregate metrics
+                lead_success_count = sum(d["Lead Capture Success"] for d in conv_data)
+                readiness_count = sum(d["Customer Readiness"] for d in conv_data)
+                trust_count = sum(d["Trust Concerns"] for d in conv_data)
+
+                lead_success_rate = (lead_success_count / total_conversations * 100) if total_conversations else 0
+                readiness_rate = (readiness_count / total_conversations * 100) if total_conversations else 0
+                trust_rate = (trust_count / total_conversations * 100) if total_conversations else 0
+
+
+                email_leads = sum(d["Email Captured"] for d in conv_data)
+                phone_leads = sum(d["Phone Captured"] for d in conv_data)
+                followup_conv_count = sum(d["Follow‑up"] for d in conv_data)
+
                 email_conversion_rate = (
                     email_leads / total_conversations) * 100 if total_conversations else 0
                 phone_conversion_rate = (
@@ -707,9 +764,13 @@ def upload_file() -> str:
                 word_count=word_count,
                 line_count=line_count,
                 total_conversations=total_conversations,
-                email_conversion_rate=email_conversion_rate,
-                phone_conversion_rate=phone_conversion_rate,
-                follow_up_rate=follow_up_rate,
+                email_conversion_rate=round(email_conversion_rate, 2),
+                phone_conversion_rate=round(phone_conversion_rate, 2),
+                follow_up_rate=round(follow_up_rate, 2),
+                readiness_rate=round(readiness_rate, 2),
+                trust_rate=round(trust_rate, 2),
+                lead_success_rate=round(lead_success_rate, 2),
+                average_sentiment_score=round(sum(d["Sentiment Score"] for d in conv_data) / total_conversations, 3) if total_conversations else 0,
                 mode=mode
             )
 
