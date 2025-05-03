@@ -503,6 +503,7 @@ class ReportGenerator:
             report_path = os.path.join(REPORTS_FOLDER, report_filename)
             self.pdf.output(report_path)
             web_report_path = f"/static/reports/{report_filename}"
+            os.makedirs(os.path.dirname(web_report_path), exist_ok=True)
             return web_report_path, overview
         except Exception as e:
             logger.error(f"Error generating report: {e}")
