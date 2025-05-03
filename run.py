@@ -3,6 +3,8 @@ Trendlyzer - A microservice for analyzing documents and generating analytical re
 """
 
 # Standard library imports
+from dotenv import load_dotenv
+import matplotlib.pyplot as plt
 from sumy.summarizers.lex_rank import LexRankSummarizer
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.parsers.plaintext import PlaintextParser
@@ -28,8 +30,6 @@ import spacy
 from keybert import KeyBERT
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from dotenv import load_dotenv
 
 load_dotenv()
 # Configure logging
@@ -110,6 +110,8 @@ except LookupError:
     nltk.download('punkt_tab')
 
 # Helper for word frequency
+
+
 def get_word_frequencies(text: str, top_n: int = 10) -> list:
     words = [w.lower() for w in re.findall(r'\b\w+\b', text)]
     stop_words = set(stopwords.words('english'))
@@ -164,7 +166,6 @@ class ReportMetrics:
     mode: str = "Normal Document"
 
 
-                
 class ReportGenerator:
     """Class responsible for generating PDF reports with charts."""
 
@@ -513,11 +514,12 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.secret_key = 'your_secret_key_here'
 
-app.config['MAIL_SERVER'] = 'smtp.gmail.com' 
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = os.getenv("MAIL_USERNAME")
-app.config['MAIL_PASSWORD'] = os.getenv("MAIL_PASSWORD")   # your email password or app password
+# your email password or app password
+app.config['MAIL_PASSWORD'] = os.getenv("MAIL_PASSWORD")
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv("MAIL_USERNAME")
 
 mail = Mail(app)
@@ -590,6 +592,7 @@ def extract_text_from_pdf(file_path: str) -> str:
             text += page.get_text()
     return text
 
+
 def create_conv_record(conv_id, user_name):
     return {
         "Conversation ID": conv_id,
@@ -604,6 +607,7 @@ def create_conv_record(conv_id, user_name):
         "Message Count": 0
     }
 
+
 @app.route('/')
 def home() -> str:
     """Render the home page.
@@ -613,13 +617,14 @@ def home() -> str:
     """
     return render_template('index.html')
 
+
 def send_email(report_path, company_name) -> str:
     try:
         recipient_email = os.getenv("RECEIVER_MAIL")
         msg = Message(
             subject=f"Trendlyzer Report for {company_name}",
             recipients=[recipient_email],
-            body=f"Hello,\n\n Trendlyzer report for {company_name} is attached!"
+            body=f"A Trendlyzer report for {company_name} was just analyzed!"
         )
         file_path = report_path.lstrip('/')
         with open(file_path, 'rb') as fp:
@@ -670,7 +675,8 @@ def upload_file() -> str:
             lines = [line.rstrip("\n") for line in content.splitlines()]
             # Detect if it's a conversational document
             has_agent = any(re.match(r"Agent:", line) for line in lines)
-            has_other_speaker = any(re.match(r"[^:]{1,40}:", line) and not line.startswith("Agent:") for line in lines)
+            has_other_speaker = any(re.match(
+                r"[^:]{1,40}:", line) and not line.startswith("Agent:") for line in lines)
             mode = "Conversational Document" if has_agent and has_other_speaker else "Normal Document"
 
             conversation_ids = []
@@ -680,26 +686,28 @@ def upload_file() -> str:
             current_conversation = ""
             all_keywords = []
 
-            email_pattern = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-            phone_pattern = re.compile(r"(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3}[-.\s]?\d{3,4}[-.\s]?\d{0,4}")
-            followup_keywords = re.compile(r"\b(follow up|schedule|demo|call|reach out|appointment|book)\b", re.IGNORECASE)
-            readiness_keywords = re.compile(r"\b(buy|purchase|ready|interested|go ahead|sign me up|subscribe|order|start|proceed)\b", re.IGNORECASE)
-            trust_keywords = re.compile(r"\b(scam|fake|trust|secure|safety|safe|legit|fraud|privacy|data leak|security)\b", re.IGNORECASE)
-
+            email_pattern = re.compile(
+                r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+            phone_pattern = re.compile(
+                r"(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3}[-.\s]?\d{3,4}[-.\s]?\d{0,4}")
+            followup_keywords = re.compile(
+                r"\b(follow up|schedule|demo|call|reach out|appointment|book)\b", re.IGNORECASE)
+            readiness_keywords = re.compile(
+                r"\b(buy|purchase|ready|interested|go ahead|sign me up|subscribe|order|start|proceed)\b", re.IGNORECASE)
+            trust_keywords = re.compile(
+                r"\b(scam|fake|trust|secure|safety|safe|legit|fraud|privacy|data leak|security)\b", re.IGNORECASE)
 
             # conv_has_email = defaultdict(bool)
             # conv_has_phone = defaultdict(bool)
             # conv_has_followup = defaultdict(bool)
-            conv_data = []  
-
-
+            conv_data = []
 
             # Parse the file to identify conversations and collect stats
             for line in lines:
                 if not line.strip() or ":" not in line:
-                     continue  # skip empty and malformed lines
+                    continue  # skip empty and malformed lines
                 speaker, message = [x.strip() for x in line.split(":", 1)]
-               
+
                 current_conversation += message
 
                 if speaker == "Agent":
@@ -711,7 +719,8 @@ def upload_file() -> str:
                         conv_data[current_conv_id]["Follow‑up"] = True
 
                     # Sentiment for agent message
-                    conv_data[current_conv_id]["Sentiment Score"] += TextBlob(message).sentiment.polarity
+                    conv_data[current_conv_id]["Sentiment Score"] += TextBlob(
+                        message).sentiment.polarity
                     conv_data[current_conv_id]["Message Count"] += 1
 
                 else:
@@ -720,10 +729,13 @@ def upload_file() -> str:
                         current_conv_id += 1
                         conversation_ids.append(current_conv_id)
                         conversations.append(current_conversation)
-                        conv_data.append(create_conv_record(current_conv_id, current_user))
+                        conv_data.append(create_conv_record(
+                            current_conv_id, current_user))
 
-                        keywords = kw_model.extract_keywords(current_conversation, top_n=5)
-                        convo_keywords = [categorize_keyword(kw) for kw, _ in keywords]
+                        keywords = kw_model.extract_keywords(
+                            current_conversation, top_n=5)
+                        convo_keywords = [categorize_keyword(
+                            kw) for kw, _ in keywords]
                         all_keywords.extend(convo_keywords)
                         current_conversation = ""
 
@@ -731,7 +743,8 @@ def upload_file() -> str:
                     if email_pattern.search(message):
                         conv_data[current_conv_id]["Email Captured"] = True
                     if phone_pattern.search(message):
-                        nums = re.sub(r"\D", "", phone_pattern.search(message).group())
+                        nums = re.sub(
+                            r"\D", "", phone_pattern.search(message).group())
                         if len(nums) >= 7:
                             conv_data[current_conv_id]["Phone Captured"] = True
                     # Readiness
@@ -743,9 +756,9 @@ def upload_file() -> str:
                         conv_data[current_conv_id]["Trust Concerns"] = True
 
                     # Sentiment
-                    conv_data[current_conv_id]["Sentiment Score"] += TextBlob(message).sentiment.polarity
+                    conv_data[current_conv_id]["Sentiment Score"] += TextBlob(
+                        message).sentiment.polarity
                     conv_data[current_conv_id]["Message Count"] += 1
-                    
 
             top_keywords = Counter(all_keywords).most_common(10)
             theme_counts = {}
@@ -762,16 +775,21 @@ def upload_file() -> str:
                     d["Lead Capture Success"] = d["Email Captured"] or d["Phone Captured"]
                     # Average sentiment
                     if d["Message Count"]:
-                        d["Sentiment Score"] = round(d["Sentiment Score"] / d["Message Count"], 3)
+                        d["Sentiment Score"] = round(
+                            d["Sentiment Score"] / d["Message Count"], 3)
                 # Aggregate metrics
-                lead_success_count = sum(d["Lead Capture Success"] for d in conv_data)
-                readiness_count = sum(d["Customer Readiness"] for d in conv_data)
+                lead_success_count = sum(
+                    d["Lead Capture Success"] for d in conv_data)
+                readiness_count = sum(d["Customer Readiness"]
+                                      for d in conv_data)
                 trust_count = sum(d["Trust Concerns"] for d in conv_data)
 
-                lead_success_rate = (lead_success_count / total_conversations * 100) if total_conversations else 0
-                readiness_rate = (readiness_count / total_conversations * 100) if total_conversations else 0
-                trust_rate = (trust_count / total_conversations * 100) if total_conversations else 0
-
+                lead_success_rate = (
+                    lead_success_count / total_conversations * 100) if total_conversations else 0
+                readiness_rate = (
+                    readiness_count / total_conversations * 100) if total_conversations else 0
+                trust_rate = (trust_count / total_conversations *
+                              100) if total_conversations else 0
 
                 email_leads = sum(d["Email Captured"] for d in conv_data)
                 phone_leads = sum(d["Phone Captured"] for d in conv_data)
@@ -781,7 +799,8 @@ def upload_file() -> str:
                     email_leads / total_conversations) * 100 if total_conversations else 0
                 phone_conversion_rate = (
                     phone_leads / total_conversations) * 100 if total_conversations else 0
-                follow_up_rate = (followup_conv_count / total_conversations * 100) if total_conversations else 0
+                follow_up_rate = (
+                    followup_conv_count / total_conversations * 100) if total_conversations else 0
                 theme_counts_final = theme_counts
             else:
                 email_conversion_rate = 0
@@ -804,7 +823,8 @@ def upload_file() -> str:
                 readiness_rate=round(readiness_rate, 2),
                 trust_rate=round(trust_rate, 2),
                 lead_success_rate=round(lead_success_rate, 2),
-                average_sentiment_score=round(sum(d["Sentiment Score"] for d in conv_data) / total_conversations, 3) if total_conversations else 0,
+                average_sentiment_score=round(sum(
+                    d["Sentiment Score"] for d in conv_data) / total_conversations, 3) if total_conversations else 0,
                 mode=mode
             )
 
