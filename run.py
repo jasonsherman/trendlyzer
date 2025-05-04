@@ -546,8 +546,6 @@ def extract_keywords_tfidf(text: str, top_n: int = 5) -> List[Tuple[str, float]]
         stop_words='english',
         max_features=top_n,
         ngram_range=(1, 2),  # Allow both single words and 2-word phrases
-        min_df=1,  # Minimum document frequency
-        max_df=0.95,  # Maximum document frequency (to filter out too common terms)
         strip_accents='unicode',
         lowercase=True
     )
