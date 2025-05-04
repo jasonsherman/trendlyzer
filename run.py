@@ -28,7 +28,6 @@ import fitz  # PyMuPDF
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 import spacy
-from keybert import KeyBERT
 import matplotlib
 matplotlib.use('Agg')
 
