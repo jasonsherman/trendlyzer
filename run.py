@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from textblob import TextBlob
 from flask_mail import Mail, Message
 import re
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 # Third-party imports
 from flask import Flask, request, render_template, redirect, url_for, session
@@ -504,7 +505,6 @@ class ReportGenerator:
             report_path = os.path.join(REPORTS_FOLDER, report_filename)
             self.pdf.output(report_path)
             web_report_path = f"/static/reports/{report_filename}"
-            os.makedirs(os.path.dirname(web_report_path), exist_ok=True)
             return web_report_path, overview
         except Exception as e:
             logger.error(f"Error generating report: {e}")
@@ -534,12 +534,42 @@ try:
             "Could not load en_core_web_md, falling back to en_core_web_sm. Similarity may be less accurate.")
         nlp = spacy.load("en_core_web_sm")
         logger.info("Loaded spaCy model: en_core_web_sm (no word vectors)")
-    kw_model = KeyBERT()
     logger.info("NLP models loaded successfully")
 except Exception as e:
     logger.error(f"Error loading NLP models: {e}")
     raise
 
+
+def extract_keywords_tfidf(text: str, top_n: int = 5) -> List[Tuple[str, float]]:
+    """Enhanced TF-IDF keyword extraction with additional preprocessing."""
+    # Initialize TF-IDF Vectorizer with more options
+    vectorizer = TfidfVectorizer(
+        stop_words='english',
+        max_features=top_n,
+        ngram_range=(1, 2),  # Allow both single words and 2-word phrases
+        min_df=1,  # Minimum document frequency
+        max_df=0.95,  # Maximum document frequency (to filter out too common terms)
+        strip_accents='unicode',
+        lowercase=True
+    )
+    
+    try:
+        # Clean and preprocess text
+        text = ' '.join(text.split())  # Normalize whitespace
+        
+        # Fit and transform
+        X = vectorizer.fit_transform([text])
+        feature_names = vectorizer.get_feature_names_out()
+        scores = X.toarray()[0]
+        
+        # Create and sort keywords
+        keywords = list(zip(feature_names, scores))
+        keywords.sort(key=lambda x: x[1], reverse=True)
+        
+        return keywords[:top_n]
+    except Exception as e:
+        logger.error(f"Error in TF-IDF keyword extraction: {e}")
+        return []
 
 def allowed_file(filename: str) -> bool:
     """Check if the file extension is allowed.
@@ -734,10 +764,9 @@ def upload_file() -> str:
                         conv_data.append(create_conv_record(
                             current_conv_id, current_user))
 
-                        keywords = kw_model.extract_keywords(
-                            current_conversation, top_n=5)
-                        convo_keywords = [categorize_keyword(
-                            kw) for kw, _ in keywords]
+                        keywords = extract_keywords_tfidf(current_conversation, top_n=5)
+                        convo_keywords = [categorize_keyword(kw) for kw, _ in keywords]
+                        
                         all_keywords.extend(convo_keywords)
                         current_conversation = ""
 
