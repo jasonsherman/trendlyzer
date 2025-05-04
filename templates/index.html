@@ -46,11 +46,27 @@
             <a href="/" class="logo-link">
                 <img src="/static/images/trendlyzer-logo.png" alt="Trendlyzer Logo" />
             </a>
+            <a href="#" class="vengo-link" id="watchDemoBtn">
+                <i class="fas fa-play-circle"></i> Watch Demo
+            </a>
             <a href="https://vengoai.com" target="_blank" class="vengo-link">
                 <i class="fas fa-external-link-alt"></i> Vengo AI
             </a>
         </div>
     </header>
+
+    <!-- Video Modal -->
+    <div id="videoModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div class="video-container">
+                <iframe id="demoVideo" width="560" height="315" src="https://www.youtube.com/embed/mL345u8uR9U"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
 
     <div class="main-content">
         <section class="hero">
@@ -102,6 +118,32 @@
     </footer>
 
     <script>
+        // Modal functionality
+        const modal = document.getElementById('videoModal');
+        const btn = document.getElementById('watchDemoBtn');
+        const span = document.getElementsByClassName('close-modal')[0];
+        const video = document.getElementById('demoVideo');
+
+        btn.onclick = function () {
+            modal.style.display = "block";
+            // Reset video to start when modal opens
+            video.src = video.src;
+        }
+
+        span.onclick = function () {
+            modal.style.display = "none";
+            // Pause video when modal closes
+            video.src = video.src;
+        }
+
+        window.onclick = function (event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+                // Pause video when clicking outside modal
+                video.src = video.src;
+            }
+        }
+
         document.getElementById('uploadForm').addEventListener('submit', function (e) {
             e.preventDefault();
             const form = e.target;
