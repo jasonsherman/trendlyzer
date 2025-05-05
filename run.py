@@ -22,7 +22,7 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 # Third-party imports
-from flask import Flask, request, render_template, redirect, url_for, session
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify
 from werkzeug.utils import secure_filename
 import fitz  # PyMuPDF
 from fpdf import FPDF
@@ -973,6 +973,111 @@ def contains_phone(text: str) -> bool:
     if match:
         return True
     return False
+
+
+@app.route('/api/analyze', methods=['POST'])
+def api_analyze():
+    """API endpoint for programmatic document analysis.
+
+    Accepts:
+    - file: Document file (PDF, DOCX, XLS, TXT, etc.)
+    - company_name: Optional company name for the report
+
+    Returns:
+    JSON response with:
+    - report_url: URL to download the generated PDF report
+    - overview: Text overview of the analysis
+    - top_keywords: List of top keywords and their frequencies
+    - theme_counts: Count of themes detected
+    - metrics: Various analysis metrics
+    """
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    company_name = request.form.get('company_name', 'Your Company Name')
+
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    try:
+        # Save the uploaded file
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        file.save(filepath)
+        file_extension = filename.rsplit('.', 1)[1].lower()
+
+        # Process the file
+        content = process_file(filepath, file_extension)
+        if content is None:
+            return jsonify({'error': 'Could not process file content'}), 400
+
+        # Analyze the content
+        word_count = len(content.split())
+        line_count = len(content.splitlines())
+        lines = [line.rstrip("\n") for line in content.splitlines()]
+
+        # Detect document mode
+        has_agent = any(re.match(r"Agent:", line) for line in lines)
+        has_other_speaker = any(re.match(
+            r"[^:]{1,40}:", line) and not line.startswith("Agent:") for line in lines)
+        mode = "Conversational Document" if has_agent and has_other_speaker else "Normal Document"
+
+        # Process conversations and extract metrics
+        conversations = split_conversations(content)
+        conv_data = []
+        all_keywords = []
+
+        for conv in conversations:
+            keywords = kw_model.extract_keywords(conv, top_n=5)
+            convo_keywords = [categorize_keyword(kw) for kw, _ in keywords]
+            all_keywords.extend(convo_keywords)
+
+        top_keywords = Counter(all_keywords).most_common(10)
+        theme_counts = {}
+        for kw, count in top_keywords:
+            for theme, keywords in THEME_MAPPING.items():
+                if kw.lower() in keywords:
+                    theme_counts[theme] = theme_counts.get(theme, 0) + count
+
+        # Generate metrics
+        metrics = {
+            'word_count': word_count,
+            'line_count': line_count,
+            'total_conversations': len(conversations),
+            'mode': mode
+        }
+
+        # Generate the report
+        report_generator = ReportGenerator(filename, company_name)
+        report_path, overview = report_generator.generate(
+            mode=mode,
+            metrics=ReportMetrics(**metrics),
+            top_keywords=top_keywords,
+            theme_counts=theme_counts,
+            conversations=conversations,
+            full_text=content
+        )
+
+        # Send email notification
+        send_email(report_path, company_name)
+
+        # Return the results
+        return jsonify({
+            'report_url': request.host_url.rstrip('/') + report_path,
+            'overview': overview,
+            'top_keywords': top_keywords,
+            'theme_counts': theme_counts,
+            'metrics': metrics
+        })
+
+    except Exception as e:
+        logger.error(f"Error in API analysis: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
