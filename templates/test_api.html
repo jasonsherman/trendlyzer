@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Test Trendlyzer API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="file"],
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Test Trendlyzer API</h1>
+    <form id="apiForm">
+        <div class="form-group">
+            <label for="file">Select Document:</label>
+            <input type="file" id="file" name="file" required>
+        </div>
+        <div class="form-group">
+            <label for="company_name">Company Name (optional):</label>
+            <input type="text" id="company_name" name="company_name" placeholder="Your Company Name">
+        </div>
+        <button type="submit">Analyze Document</button>
+    </form>
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('apiForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData();
+            formData.append('file', document.getElementById('file').files[0]);
+            formData.append('company_name', document.getElementById('company_name').value);
+
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                document.getElementById('result').textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                document.getElementById('result').textContent = 'Error: ' + error.message;
+            }
+        });
+    </script>
+</body>
+
+</html>
