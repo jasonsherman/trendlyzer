@@ -1115,8 +1115,6 @@ def results_page():
     )
 
 
-    
-
 def process_file(filepath: str, file_extension: str) -> Optional[str]:
     """Process different file types and extract their content.
 
