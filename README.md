@@ -1,6 +1,7 @@
 # 📄 Trendlyzer – AI-Driven Document Analyzer & Report Generator
 
-Upload files → Analyze Data → Extract Insights → Generate Beautiful PDF Reports.
+Upload files → Analyze Data → Extract Insights → Generate Beautiful PDF Reports. Try it live at [trendlyzer.com](https://trendlyzer.com)!
+
 
 ---
 
