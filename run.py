@@ -20,9 +20,12 @@ from textblob import TextBlob
 from flask_mail import Mail, Message
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
+from extract_text import extract_text
+from llm_report import generate_report_with_llm
+import base64
 
 # Third-party imports
-from flask import Flask, request, render_template, redirect, url_for, session, jsonify
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify, send_file
 from werkzeug.utils import secure_filename
 import fitz  # PyMuPDF
 from fpdf import FPDF
@@ -30,6 +33,10 @@ from fpdf.enums import XPos, YPos
 import spacy
 import matplotlib
 matplotlib.use('Agg')
+
+# Allowed extensions (no dot)
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'xls',
+                      'xlsx', 'txt', 'csv', 'md', 'rtf', 'ppt', 'pptx'}
 
 load_dotenv()
 # Configure logging
@@ -42,10 +49,8 @@ logger = logging.getLogger(__name__)
 # Constants and Configuration
 UPLOAD_FOLDER = 'uploads'
 REPORTS_FOLDER = 'static/reports'
-ALLOWED_EXTENSIONS = {
-    'pdf', 'doc', 'docx', 'xls', 'xlsx',
-    'txt', 'csv', 'md', 'rtf', 'ppt', 'pptx'
-}
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(REPORTS_FOLDER, exist_ok=True)
 
 # Report Configuration
 REPORT_CONFIG = {
@@ -549,35 +554,31 @@ def extract_keywords_tfidf(text: str, top_n: int = 5) -> List[Tuple[str, float]]
         strip_accents='unicode',
         lowercase=True
     )
-    
+
     try:
         # Clean and preprocess text
         text = ' '.join(text.split())  # Normalize whitespace
-        
+
         # Fit and transform
         X = vectorizer.fit_transform([text])
         feature_names = vectorizer.get_feature_names_out()
         scores = X.toarray()[0]
-        
+
         # Create and sort keywords
         keywords = list(zip(feature_names, scores))
         keywords.sort(key=lambda x: x[1], reverse=True)
-        
+
         return keywords[:top_n]
     except Exception as e:
         logger.error(f"Error in TF-IDF keyword extraction: {e}")
         return []
 
-def allowed_file(filename: str) -> bool:
-    """Check if the file extension is allowed.
 
-    Args:
-        filename: The name of the file to check
-
-    Returns:
-        bool: True if the file extension is allowed, False otherwise
-    """
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def allowed_file(filename):
+    # Get extension without dot, lowercased
+    ext = os.path.splitext(filename)[1][1:].lower()
+    print("Uploaded filename:", filename, "Extension:", ext)  # Debug print
+    return '.' in filename and ext in ALLOWED_EXTENSIONS
 
 
 def split_conversations(text: str) -> List[str]:
@@ -692,16 +693,16 @@ def upload_file() -> str:
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
             file.save(filepath)
-            file_extension = filename.rsplit('.', 1)[1].lower()
+            ext = os.path.splitext(filename)[1][1:].lower()
 
-            content = process_file(filepath, file_extension)
-            if content is None:
+            text = extract_text(filepath, ext)
+            if text is None:
                 return f'File {file.filename} uploaded, but advanced analysis not yet available.'
 
-            word_count = len(content.split())
-            line_count = len(content.splitlines())
+            word_count = len(text.split())
+            line_count = len(text.splitlines())
 
-            lines = [line.rstrip("\n") for line in content.splitlines()]
+            lines = [line.rstrip("\n") for line in text.splitlines()]
             # Detect if it's a conversational document
             has_agent = any(re.match(r"Agent:", line) for line in lines)
             has_other_speaker = any(re.match(
@@ -726,9 +727,6 @@ def upload_file() -> str:
             trust_keywords = re.compile(
                 r"\b(scam|fake|trust|secure|safety|safe|legit|fraud|privacy|data leak|security)\b", re.IGNORECASE)
 
-            # conv_has_email = defaultdict(bool)
-            # conv_has_phone = defaultdict(bool)
-            # conv_has_followup = defaultdict(bool)
             conv_data = []
 
             # Parse the file to identify conversations and collect stats
@@ -761,9 +759,11 @@ def upload_file() -> str:
                         conv_data.append(create_conv_record(
                             current_conv_id, current_user))
 
-                        keywords = extract_keywords_tfidf(current_conversation, top_n=5)
-                        convo_keywords = [categorize_keyword(kw) for kw, _ in keywords]
-                        
+                        keywords = extract_keywords_tfidf(
+                            current_conversation, top_n=5)
+                        convo_keywords = [categorize_keyword(
+                            kw) for kw, _ in keywords]
+
                         all_keywords.extend(convo_keywords)
                         current_conversation = ""
 
@@ -839,7 +839,7 @@ def upload_file() -> str:
                 trust_rate = 0
                 total_conversations = 0
                 theme_counts_final = improved_theme_detection(
-                    content, THEME_MAPPING, nlp)
+                    text, THEME_MAPPING, nlp)
 
             metrics = ReportMetrics(
                 word_count=word_count,
@@ -863,7 +863,7 @@ def upload_file() -> str:
                 top_keywords=top_keywords,
                 theme_counts=theme_counts_final,
                 conversations=conversations,
-                full_text=content
+                full_text=text
             )
             session['results'] = {
                 'company_name': company_name,
@@ -880,224 +880,6 @@ def upload_file() -> str:
             return f"An error occurred while processing the file: {str(e)}"
 
     return 'Invalid file type. Allowed: PDF, DOC, DOCX, XLS, XLSX, TXT, CSV, MD, RTF, PPT, PPTX.'
-
-
-@app.route('/api/analyze', methods=['POST'])
-def api_analyze() -> object:
-    """API endpoint for programmatic document analysis.
-    Accepts:
-     - file: Document file (PDF, DOCX, XLS, TXT, etc.)
-     - company_name: Optional company name for the report
- 
-     Returns:
-     JSON response with:
-     - report_url: URL to download the generated PDF report
-     - overview: Text overview of the analysis
-     - top_keywords: List of top keywords and their frequencies
-     - theme_counts: Count of themes detected
-     - metrics: Various analysis metrics
-     """
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-
-    file = request.files['file']
-    company_name = request.form.get(
-        'company_name', 'Company Name not provided')
-
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-
-    if file and allowed_file(file.filename):
-        try:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            file.save(filepath)
-            file_extension = filename.rsplit('.', 1)[1].lower()
-
-            content = process_file(filepath, file_extension)
-            if content is None:
-                return jsonify({'error': 'Could not process file content'}), 400
-
-            word_count = len(content.split())
-            line_count = len(content.splitlines())
-
-            lines = [line.rstrip("\n") for line in content.splitlines()]
-            # Detect if it's a conversational document
-            has_agent = any(re.match(r"Agent:", line) for line in lines)
-            has_other_speaker = any(re.match(
-                r"[^:]{1,40}:", line) and not line.startswith("Agent:") for line in lines)
-            mode = "Conversational Document" if has_agent and has_other_speaker else "Normal Document"
-
-            conversation_ids = []
-            conversations = []
-            current_conv_id = -1
-            current_user = None
-            current_conversation = ""
-            all_keywords = []
-
-            email_pattern = re.compile(
-                r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-            phone_pattern = re.compile(
-                r"(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3}[-.\s]?\d{3,4}[-.\s]?\d{0,4}")
-            followup_keywords = re.compile(
-                r"\b(follow up|schedule|demo|call|reach out|appointment|book)\b", re.IGNORECASE)
-            readiness_keywords = re.compile(
-                r"\b(buy|purchase|ready|interested|go ahead|sign me up|subscribe|order|start|proceed)\b", re.IGNORECASE)
-            trust_keywords = re.compile(
-                r"\b(scam|fake|trust|secure|safety|safe|legit|fraud|privacy|data leak|security)\b", re.IGNORECASE)
-
-            conv_data = []
-
-            # Parse the file to identify conversations and collect stats
-            for line in lines:
-                if not line.strip() or ":" not in line:
-                    continue  # skip empty and malformed lines
-                speaker, message = [x.strip() for x in line.split(":", 1)]
-
-                current_conversation += message
-
-                if speaker == "Agent":
-                    # If no conversation started yet, skip until user speaks
-                    if current_conv_id < 0:
-                        continue
-                    # Follow‑up detection
-                    if followup_keywords.search(message):
-                        conv_data[current_conv_id]["Follow‑up"] = True
-
-                    # Sentiment for agent message
-                    conv_data[current_conv_id]["Sentiment Score"] += TextBlob(
-                        message).sentiment.polarity
-                    conv_data[current_conv_id]["Message Count"] += 1
-
-                else:
-                    if speaker != current_user:
-                        current_user = speaker
-                        current_conv_id += 1
-                        conversation_ids.append(current_conv_id)
-                        conversations.append(current_conversation)
-                        conv_data.append(create_conv_record(
-                            current_conv_id, current_user))
-
-                        keywords = extract_keywords_tfidf(current_conversation, top_n=5)
-                        convo_keywords = [categorize_keyword(kw) for kw, _ in keywords]
-                        
-                        all_keywords.extend(convo_keywords)
-                        current_conversation = ""
-
-                    # Email / phone
-                    if email_pattern.search(message):
-                        conv_data[current_conv_id]["Email Captured"] = True
-                    if phone_pattern.search(message):
-                        nums = re.sub(
-                            r"\D", "", phone_pattern.search(message).group())
-                        if len(nums) >= 7:
-                            conv_data[current_conv_id]["Phone Captured"] = True
-                    # Readiness
-                    if readiness_keywords.search(message):
-                        conv_data[current_conv_id]["Customer Readiness"] = True
-
-                    # Trust concerns
-                    if trust_keywords.search(message):
-                        conv_data[current_conv_id]["Trust Concerns"] = True
-
-                    # Sentiment
-                    conv_data[current_conv_id]["Sentiment Score"] += TextBlob(
-                        message).sentiment.polarity
-                    conv_data[current_conv_id]["Message Count"] += 1
-
-            top_keywords = Counter(all_keywords).most_common(10)
-            theme_counts = {}
-            for kw, count in top_keywords:
-                for theme, keywords in THEME_MAPPING.items():
-                    if kw.lower() in keywords:
-                        theme_counts[theme] = theme_counts.get(
-                            theme, 0) + count
-
-            # For business docs, use improved theme detection
-            if mode == "Conversational Document":
-                total_conversations = len(conversations)
-                for d in conv_data:
-                    d["Lead Capture Success"] = d["Email Captured"] or d["Phone Captured"]
-                    # Average sentiment
-                    if d["Message Count"]:
-                        d["Sentiment Score"] = round(
-                            d["Sentiment Score"] / d["Message Count"], 3)
-                # Aggregate metrics
-                lead_success_count = sum(
-                    d["Lead Capture Success"] for d in conv_data)
-                readiness_count = sum(d["Customer Readiness"]
-                                      for d in conv_data)
-                trust_count = sum(d["Trust Concerns"] for d in conv_data)
-
-                lead_success_rate = (
-                    lead_success_count / total_conversations * 100) if total_conversations else 0
-                readiness_rate = (
-                    readiness_count / total_conversations * 100) if total_conversations else 0
-                trust_rate = (trust_count / total_conversations *
-                              100) if total_conversations else 0
-
-                email_leads = sum(d["Email Captured"] for d in conv_data)
-                phone_leads = sum(d["Phone Captured"] for d in conv_data)
-                followup_conv_count = sum(d["Follow‑up"] for d in conv_data)
-
-                email_conversion_rate = (
-                    email_leads / total_conversations) * 100 if total_conversations else 0
-                phone_conversion_rate = (
-                    phone_leads / total_conversations) * 100 if total_conversations else 0
-                follow_up_rate = (
-                    followup_conv_count / total_conversations * 100) if total_conversations else 0
-                theme_counts_final = theme_counts
-            else:
-                email_conversion_rate = 0
-                phone_conversion_rate = 0
-                follow_up_rate = 0
-                readiness_rate = 0
-                lead_success_rate = 0
-                trust_rate = 0
-                total_conversations = 0
-                theme_counts_final = improved_theme_detection(
-                    content, THEME_MAPPING, nlp)
-
-            metrics = ReportMetrics(
-                word_count=word_count,
-                line_count=line_count,
-                total_conversations=total_conversations,
-                email_conversion_rate=round(email_conversion_rate, 2),
-                phone_conversion_rate=round(phone_conversion_rate, 2),
-                follow_up_rate=round(follow_up_rate, 2),
-                readiness_rate=round(readiness_rate, 2),
-                trust_rate=round(trust_rate, 2),
-                lead_success_rate=round(lead_success_rate, 2),
-                average_sentiment_score=round(sum(
-                    d["Sentiment Score"] for d in conv_data) / total_conversations, 3) if total_conversations else 0,
-                mode=mode
-            )
-
-            report_generator = ReportGenerator(filename, company_name)
-            report_path, overview = report_generator.generate(
-                mode=mode,
-                metrics=metrics,
-                top_keywords=top_keywords,
-                theme_counts=theme_counts_final,
-                conversations=conversations,
-                full_text=content
-            )
-            send_email(report_path, company_name)
-            return jsonify({
-             'report_url': request.host_url.rstrip('/') + report_path,
-             'company_name': company_name,
-             'overview': overview,
-             'top_keywords': top_keywords,
-             'theme_counts': theme_counts_final,
-             'metrics': metrics
-         })
-
-        except Exception as e:
-            logger.error(f"Error in API analysis: {e}")
-            return jsonify({'error': str(e)}), 500
-
-    return jsonify({'error': f'Invalid file type. Allowed: {ALLOWED_EXTENSIONS}'}), 400
 
 
 @app.route('/results')
@@ -1191,6 +973,61 @@ def contains_phone(text: str) -> bool:
     if match:
         return True
     return False
+
+
+# Helper: generate PDF from LLM JSON
+
+def generate_pdf_from_llm_json(report_json, pdf_path, report_name="Business Report"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, report_name, ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font("Arial", '', 12)
+    # Add sections
+    for section in ["executive_summary", "key_findings", "detailed_analysis", "recommendations", "conclusion"]:
+        if section in report_json:
+            pdf.set_font("Arial", 'B', 14)
+            pdf.cell(0, 10, section.replace('_', ' ').title(), ln=True)
+            pdf.set_font("Arial", '', 12)
+            pdf.multi_cell(0, 10, report_json[section])
+            pdf.ln(5)
+    # Add visualizations
+    if "visualizations" in report_json:
+        for viz in report_json["visualizations"]:
+            if viz.get("caption"):
+                pdf.set_font("Arial", 'I', 11)
+                pdf.multi_cell(0, 8, viz["caption"])
+            if viz.get("image_base64"):
+                img_data = base64.b64decode(viz["image_base64"])
+                img_path = os.path.join(REPORTS_FOLDER, "temp_chart.png")
+                with open(img_path, "wb") as img_file:
+                    img_file.write(img_data)
+                pdf.image(img_path, w=150)
+                os.remove(img_path)
+            pdf.ln(5)
+    pdf.output(pdf_path)
+
+# Helper: email PDF
+
+
+def email_pdf(pdf_path, report_name):
+    recipient_email = os.getenv("RECEIVER_MAIL")
+    if not recipient_email:
+        return False
+    msg = Message(
+        subject=f"Trendlyzer Report: {report_name}",
+        recipients=[recipient_email],
+        body=f"Your Trendlyzer report '{report_name}' is attached."
+    )
+    with open(pdf_path, 'rb') as fp:
+        msg.attach(
+            filename=os.path.basename(pdf_path),
+            content_type='application/pdf',
+            data=fp.read()
+        )
+    mail.send(msg)
+    return True
 
 
 if __name__ == '__main__':
