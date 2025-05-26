@@ -5,6 +5,7 @@ from typing import Optional
 from PyPDF2 import PdfReader
 import docx
 import pandas as pd
+from docx import Document
 import logging
 
 logger = logging.getLogger(__name__)
@@ -33,8 +34,16 @@ def process_file(filepath: str, file_extension: str) -> Optional[str]:
 
         # 4. Handle DOC
         elif file_extension == 'doc':
-            import textract
-            return textract.process(filepath).decode('utf-8')
+            doc = Document(filepath)
+            text = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    text.append(para.text)
+            for table in doc.tables:
+                for row in table.rows:
+                    row_data = [cell.text for cell in row.cells]
+                    text.append('\t'.join(row_data))
+            return "\n".join(text)
 
         # 5. Handle XLS/XLSX
         elif file_extension in ['xls', 'xlsx']:

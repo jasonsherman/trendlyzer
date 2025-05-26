@@ -5,7 +5,6 @@ import os
 import logging
 from flask import Flask
 from flask_mail import Mail
-import spacy
 from .config.config import FLASK_CONFIG, MAIL_CONFIG
 
 def create_app():
@@ -34,23 +33,6 @@ def create_app():
     # Initialize extensions
     mail = Mail(app)
     app.mail = mail  # Store mail instance in app context
-    
-    # Load NLP models
-    try:
-        try:
-            nlp = spacy.load("en_core_web_md")
-            logging.info("Loaded spaCy model: en_core_web_md (with word vectors)")
-        except Exception as e:
-            logging.warning(
-                "Could not load en_core_web_md, falling back to en_core_web_sm. Similarity may be less accurate.")
-            nlp = spacy.load("en_core_web_sm")
-            logging.info("Loaded spaCy model: en_core_web_sm (no word vectors)")
-        logging.info("NLP models loaded successfully")
-    except Exception as e:
-        logging.error(f"Error loading NLP models: {e}")
-        raise
-    
-    app.nlp = nlp  # Store nlp instance in app context
     
     # Register blueprints
     from .routes.main import main

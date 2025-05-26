@@ -55,8 +55,10 @@ def upload_file():
             session['results'] = {
                 'company_name': company_name,
                 'overview': report_data['overview'],
-                'top_keywords': report_data['top_keywords'],
-                'theme_counts': report_data['theme_counts'],
+
+                'key_topics': report_data['key_topics'],
+                'themes': report_data['themes'],
+
                 'report_path': report_data['report_path']
             }
             
@@ -100,8 +102,10 @@ def api_analyze():
                 'report_url': request.host_url.rstrip('/') + report_data['report_path'],
                 'company_name': company_name,
                 'overview': report_data['overview'],
-                'top_keywords': report_data['top_keywords'],
-                'theme_counts': report_data['theme_counts'],
+
+                'key_topics': report_data['key_topics'],
+                'themes': report_data['themes'],
+
                 'metrics': report_data['metrics']
             })
 
@@ -121,7 +125,7 @@ def results_page():
         'results.html',
         company_name=results['company_name'],
         overview=results['overview'],
-        top_keywords=results['top_keywords'],
-        theme_counts=results['theme_counts'],
+        key_topics=results['key_topics'],
+        themes=results['themes'],
         report_path=results['report_path']
     )

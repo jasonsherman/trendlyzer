@@ -2,19 +2,19 @@
 Service for processing and analyzing content from uploaded files.
 """
 import re
-from collections import Counter
-from typing import Dict, List, Tuple, Optional
-from textblob import TextBlob
+import os
+import json_repair
+import json
 from flask import current_app
+from openai import OpenAI
+from dotenv import load_dotenv
 from ..models.report_metrics import ReportMetrics
 from ..services.report_generator import ReportGenerator
 from ..services.email_service import send_report_email
-from ..utils.text_processing import (
-    extract_keywords_tfidf,
-    categorize_keyword,
-    improved_theme_detection
-)
-from ..config.config import THEME_MAPPING
+from ..config.config import prompt1_user, prompt1_system
+
+
+load_dotenv()
 
 def create_conv_record(conv_id: int, user_name: str) -> dict:
     """Create a new conversation record."""
@@ -27,37 +27,92 @@ def create_conv_record(conv_id: int, user_name: str) -> dict:
         "Follow‑up": False,
         "Customer Readiness": False,
         "Trust Concerns": False,
-        "Sentiment Score": 0.0,
         "Message Count": 0
     }
 
-def process_content(content: str, filename: str, company_name: str) -> dict:
-    """Process content and generate report data.
+def get_openai_client():
+    """
+    Initialize and return OpenAI client
+    """
+    try:
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+        current_app.logger.debug("OpenAI client initialized successfully")
+        return client
+    except Exception as e:
+        current_app.logger.error(f"Failed to initialize OpenAI client: {str(e)}")
+        raise
+
+def call_openai(client, user_prompt, system_prompt):
+    try:
+        completion = client.chat.completions.create(
+            extra_body={},
+            model="qwen/qwen3-235b-a22b:free",
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+        )
+        if not completion:
+            current_app.logger.error("OpenAI API returned None completion object")
+            raise Exception("OpenAI API returned None completion object")
+
+        if not completion.choices:
+            current_app.logger.error(f"OpenAI API returned empty response: {str(completion)}")
+            raise Exception("Empty response from OpenAI API")
+        
+        return completion.choices[0].message.content
+    except Exception as e:
+        current_app.logger.error(f"Error calling OpenAI API: {str(e)}")
+        raise Exception(f"Failed to get response from OpenAI API: {str(e)}")
+    
+def extract_trimmed_json(response_json):
+    return {
+        "key_metrics": response_json.get("key_metrics", {}),
+        "detailed_analysis": response_json.get("detailed_analysis", []),
+        "recommendations": response_json.get("recommendations", [])
+    }
+
+def parse_openai_response(response_content):
+    """
+    Extract and parse the JSON object that follows the last `prefix` in the model output.
+    Handles common noise like markdown fences or trailing commentary.
+    """
+    try:
+        candidate = re.sub(r"```(?:json)?|```", "", response_content).strip()
+
+        start = candidate.find("{")
+        end   = candidate.rfind("}")
+        if start == -1 or end == -1:
+            raise ValueError("No JSON braces found after prefix")
+
+        json_str = candidate[start:end + 1]
+
+        def _escaper(match):
+            return match.group(0).replace("\n", "\\n")
+        json_str = re.sub(r'"(?:[^"\\]|\\.)*"', _escaper, json_str, flags=re.DOTALL)
+
+        return json_repair.loads(json_str)
+
+    except Exception as e:
+        current_app.logger.error(f"JSON parsing error: {e}")
+        current_app.logger.debug(f"Original model output:\n{response_content}")
+        raise
+
+def process_conversations(lines: list, company_name: str) -> tuple:
+    """Process conversation lines and extract relevant metrics and data.
     
     Args:
-        content: The text content to analyze
-        filename: Name of the uploaded file
-        company_name: Name of the company
+        lines: List of conversation lines
+        company_name: Name of the company for keyword categorization
         
     Returns:
-        dict: Analysis results including metrics, keywords, and report path
+        tuple: (conversations, conv_data, all_keywords, top_keywords, theme_counts)
     """
-    word_count = len(content.split())
-    line_count = len(content.splitlines())
-
-    lines = [line.rstrip("\n") for line in content.splitlines()]
-    # Detect if it's a conversational document
-    has_agent = any(re.match(r"Agent:", line) for line in lines)
-    has_other_speaker = any(re.match(
-        r"[^:]{1,40}:", line) and not line.startswith("Agent:") for line in lines)
-    mode = "Conversational Document" if has_agent and has_other_speaker else "Normal Document"
-
     conversation_ids = []
     conversations = []
     current_conv_id = -1
     current_user = None
     current_conversation = ""
-    all_keywords = []
 
     email_pattern = re.compile(
         r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
@@ -88,9 +143,6 @@ def process_content(content: str, filename: str, company_name: str) -> dict:
             if followup_keywords.search(message):
                 conv_data[current_conv_id]["Follow‑up"] = True
 
-            # Sentiment for agent message
-            conv_data[current_conv_id]["Sentiment Score"] += TextBlob(
-                message).sentiment.polarity
             conv_data[current_conv_id]["Message Count"] += 1
 
         else:
@@ -101,11 +153,6 @@ def process_content(content: str, filename: str, company_name: str) -> dict:
                 conversations.append(current_conversation)
                 conv_data.append(create_conv_record(
                     current_conv_id, current_user))
-
-                keywords = extract_keywords_tfidf(current_conversation, top_n=5)
-                convo_keywords = [categorize_keyword(kw, company_names=[company_name], locations=[]) for kw, _ in keywords]
-                
-                all_keywords.extend(convo_keywords)
                 current_conversation = ""
 
             # Email / phone
@@ -124,53 +171,119 @@ def process_content(content: str, filename: str, company_name: str) -> dict:
             if trust_keywords.search(message):
                 conv_data[current_conv_id]["Trust Concerns"] = True
 
-            # Sentiment
-            conv_data[current_conv_id]["Sentiment Score"] += TextBlob(
-                message).sentiment.polarity
             conv_data[current_conv_id]["Message Count"] += 1
+                    
+    return conversations, conv_data
 
-    top_keywords = Counter(all_keywords).most_common(10)
-    theme_counts = {}
-    for kw, count in top_keywords:
-        for theme, keywords in THEME_MAPPING.items():
-            if kw.lower() in keywords:
-                theme_counts[theme] = theme_counts.get(
-                    theme, 0) + count
 
-    # For business docs, use improved theme detection
+def calculate_conversation_metrics(conv_data: list, total_conversations: int) -> tuple:
+    """Calculate metrics from conversation data.
+    
+    Args:
+        conv_data: List of conversation data dictionaries
+        total_conversations: Total number of conversations
+        
+    Returns:
+        tuple: (email_conversion_rate, phone_conversion_rate, follow_up_rate, 
+                readiness_rate, lead_success_rate, trust_rate)
+    """
+    # Calculate lead success
+    lead_success_count = sum(d["Lead Capture Success"] for d in conv_data)
+    readiness_count = sum(d["Customer Readiness"] for d in conv_data)
+    trust_count = sum(d["Trust Concerns"] for d in conv_data)
+
+    lead_success_rate = (
+        lead_success_count / total_conversations * 100) if total_conversations else 0
+    readiness_rate = (
+        readiness_count / total_conversations * 100) if total_conversations else 0
+    trust_rate = (trust_count / total_conversations * 100) if total_conversations else 0
+
+    # Calculate conversion rates
+    email_leads = sum(d["Email Captured"] for d in conv_data)
+    phone_leads = sum(d["Phone Captured"] for d in conv_data)
+    followup_conv_count = sum(d["Follow‑up"] for d in conv_data)
+
+    email_conversion_rate = (
+        email_leads / total_conversations) * 100 if total_conversations else 0
+    phone_conversion_rate = (
+        phone_leads / total_conversations) * 100 if total_conversations else 0
+    follow_up_rate = (
+        followup_conv_count / total_conversations * 100) if total_conversations else 0
+        
+    return (email_conversion_rate, phone_conversion_rate, follow_up_rate,
+            readiness_rate, lead_success_rate, trust_rate)
+
+def has_meaningful_data(trimmed_json: dict) -> bool:
+    """Check if the trimmed JSON contains meaningful data for visualization.
+    
+    Args:
+        trimmed_json: The trimmed JSON response
+        
+    Returns:
+        bool: True if there's meaningful data, False otherwise
+    """
+    # Check key_metrics
+    metrics = trimmed_json.get("key_metrics", {})
+    if any(metrics.get(category, []) for category in ["financial", "performance", "other_metrics"]):
+        return True
+        
+    # Check detailed_analysis
+    if trimmed_json.get("detailed_analysis", []):
+        return True
+        
+    # Check recommendations
+    if trimmed_json.get("recommendations", []):
+        return True
+        
+    return False
+
+def process_content(content: str, filename: str, company_name: str) -> dict:
+    """Process content and generate report data.
+    
+    Args:
+        content: The text content to analyze
+        filename: Name of the uploaded file
+        company_name: Name of the company
+        
+    Returns:
+        dict: Analysis results including metrics, keywords, and report path
+    """
+    word_count = len(content.split())
+    line_count = len(content.splitlines())
+
+    lines = [line.rstrip("\n") for line in content.splitlines()]
+    # Detect if it's a conversational document
+    has_agent = any(re.match(r"Agent:", line) for line in lines)
+    has_other_speaker = any(re.match(
+        r"[^:]{1,40}:", line) and not line.startswith("Agent:") for line in lines)
+    mode = "Conversational Document" if has_agent and has_other_speaker else "Normal Document"
+
+    # Get AI analysis
+    client = get_openai_client()
+    user_prompt = prompt1_user.replace("{{DOCUMENT_CONTENT}}", content[:20000])
+    ai_analysis = call_openai(client, user_prompt, prompt1_system)
+   
+    current_app.logger.info(f"AI analysis: {ai_analysis}")
+    ai_analysis_json = parse_openai_response(ai_analysis)
+    current_app.logger.info(f"=================================================")
+    current_app.logger.info(f"=================================================")
+    current_app.logger.info(f"=================================================")
+    current_app.logger.info(f"PARSED AI analysis: {ai_analysis_json}")
+    current_app.logger.info(f"=================================================")
+    current_app.logger.info(f"=================================================")
+
     if mode == "Conversational Document":
+        conversations, conv_data = process_conversations(lines, company_name)
         total_conversations = len(conversations)
+        
         for d in conv_data:
             d["Lead Capture Success"] = d["Email Captured"] or d["Phone Captured"]
-            # Average sentiment
-            if d["Message Count"]:
-                d["Sentiment Score"] = round(
-                    d["Sentiment Score"] / d["Message Count"], 3)
-        # Aggregate metrics
-        lead_success_count = sum(
-            d["Lead Capture Success"] for d in conv_data)
-        readiness_count = sum(d["Customer Readiness"]
-                              for d in conv_data)
-        trust_count = sum(d["Trust Concerns"] for d in conv_data)
+                    
+        # Calculate metrics
+        (email_conversion_rate, phone_conversion_rate, follow_up_rate,
+         readiness_rate, lead_success_rate, trust_rate) = calculate_conversation_metrics(
+            conv_data, total_conversations)
 
-        lead_success_rate = (
-            lead_success_count / total_conversations * 100) if total_conversations else 0
-        readiness_rate = (
-            readiness_count / total_conversations * 100) if total_conversations else 0
-        trust_rate = (trust_count / total_conversations *
-                       100) if total_conversations else 0
-
-        email_leads = sum(d["Email Captured"] for d in conv_data)
-        phone_leads = sum(d["Phone Captured"] for d in conv_data)
-        followup_conv_count = sum(d["Follow‑up"] for d in conv_data)
-
-        email_conversion_rate = (
-            email_leads / total_conversations) * 100 if total_conversations else 0
-        phone_conversion_rate = (
-            phone_leads / total_conversations) * 100 if total_conversations else 0
-        follow_up_rate = (
-            followup_conv_count / total_conversations * 100) if total_conversations else 0
-        theme_counts_final = theme_counts
     else:
         email_conversion_rate = 0
         phone_conversion_rate = 0
@@ -179,8 +292,9 @@ def process_content(content: str, filename: str, company_name: str) -> dict:
         lead_success_rate = 0
         trust_rate = 0
         total_conversations = 0
-        theme_counts_final = improved_theme_detection(
-            content, THEME_MAPPING, current_app.nlp)
+        conversations = []
+        conv_data = []
+        top_keywords = []
 
     metrics = ReportMetrics(
         word_count=word_count,
@@ -192,20 +306,21 @@ def process_content(content: str, filename: str, company_name: str) -> dict:
         readiness_rate=round(readiness_rate, 2),
         trust_rate=round(trust_rate, 2),
         lead_success_rate=round(lead_success_rate, 2),
-        average_sentiment_score=round(sum(
-            d["Sentiment Score"] for d in conv_data) / total_conversations, 3) if total_conversations else 0,
-        mode=mode
+        mode=mode,
+        ai_analysis=ai_analysis_json
     )
+
+    current_app.logger.info(f"Metrics: {metrics}")
 
     report_generator = ReportGenerator(filename, company_name)
     report_path, overview = report_generator.generate(
         mode=mode,
         metrics=metrics,
-        top_keywords=top_keywords,
-        theme_counts=theme_counts_final,
-        conversations=conversations,
-        full_text=content
     )
+    key_topics = metrics.ai_analysis.get("key_topics", [])
+    themes = metrics.ai_analysis.get("themes", [])
+
+
     
     # Send email with report
     send_report_email(report_path, company_name)
@@ -213,7 +328,7 @@ def process_content(content: str, filename: str, company_name: str) -> dict:
     return {
         'report_path': report_path,
         'overview': overview,
-        'top_keywords': top_keywords,
-        'theme_counts': theme_counts_final,
+        'key_topics': key_topics,
+        'themes': themes,
         'metrics': metrics
     } 
