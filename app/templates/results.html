@@ -47,18 +47,18 @@
                 <p>{{ overview }}</p>
             </div>
             <div class="results-card">
-                <h2>Top Keywords</h2>
+                <h2>Top Key topics</h2>
                 <ul>
-                    {% for keyword, count in top_keywords %}
-                    <li>{{ keyword }} ({{ count }} mentions)</li>
+                    {% for key_topic in key_topics %}
+                    <li>{{ key_topic.topic }} ({{ key_topic.coverage_pct }}%)</li>
                     {% endfor %}
                 </ul>
             </div>
             <div class="results-card">
                 <h2>Detected Themes</h2>
                 <ul>
-                    {% for theme, count in theme_counts.items() %}
-                    <li>{{ theme }} ({{ count }} mentions)</li>
+                    {% for theme in themes %}
+                    <li>{{ theme.get("phrase", "") }} ({{ theme.get("weight", 0) }} weight)</li>
                     {% endfor %}
                 </ul>
             </div>

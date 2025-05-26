@@ -2,6 +2,9 @@
 venv/
 uploads/
 static/reports/
+app/uploads/
+app/static/reports/
+input_files/
 
 # Ignore Python cache files
 __pycache__/

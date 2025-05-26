@@ -1,11 +1,12 @@
 # 📄 Trendlyzer – AI-Driven Document Analyzer & Report Generator
 
-Upload files → Analyze Data → Extract Insights → Generate Beautiful PDF Reports. Try it live at [trendlyzer.com](https://trendlyzer.com)!
+Trendlyzer is a powerful document analysis tool that processes various file formats and generates comprehensive analytical reports with visualizations. It's particularly effective at analyzing conversational documents and business documents to extract meaningful insights.
 
+## Features
 
 ---
 
-## ✨ Project Overview
+## Installation
 
 Trendlyzer is a lightweight microservice that allows users to upload files (PDF, DOCX, XLS, TXT), automatically extract and analyze their content, and generate a clean, professional PDF report filled with insights, trends, and visual charts.
 
@@ -51,44 +52,96 @@ git clone https://github.com/jasonsherman/trendlyzer.git
 cd trendlyzer
 ```
 
-### 2. Install Requirements
+2. Create a virtual environment and activate it:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Environment Setup
-Create a `.env` file based on `.env.example`:
-```bash
-SUPABASE_URL=https://your-supabase-project.supabase.co
-SUPABASE_API_KEY=your_supabase_api_key
+4. Download required NLTK data:
+```python
+python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt')"
 ```
 
-### 4. Run the App
+5. Download spaCy models:
+```bash
+python -m spacy download en_core_web_md
+```
+
+6. Create a `.env` file with the following variables:
+```
+MAIL_USERNAME=your_email@gmail.com
+MAIL_PASSWORD=your_app_password
+RECEIVER_MAIL=recipient@example.com
+```
+
+## Usage
+
+1. Start the application:
 ```bash
 python run.py
 ```
-Then open `http://localhost:5000` in your browser.
 
----
+2. Access the web interface at `http://localhost:5000`
 
-## 🔐 Privacy and Security
+3. Upload a document and provide a company name
 
-- Uploaded files are temporarily stored in Supabase and auto-deleted within 24 hours.
-- Environment variables are used to secure access keys.
-- No personal data is stored long-term.
+4. View the generated report and analysis
 
----
+### API Usage
 
-## 📜 License
+Send a POST request to `/api/analyze` with:
+- `file`: The document file
+- `company_name`: Company name for the report
 
-This project is licensed under the [MIT License](LICENSE).
+Example using curl:
+```bash
+curl -X POST -F "file=@document.pdf" -F "company_name=Example Corp" http://localhost:5000/api/analyze
+```
 
----
+## Project Structure
 
-## 🙌 Contributions Welcome!
+```
+trendlyzer/
+├── app/
+│   ├── config/
+│   │   └── config.py
+│   ├── models/
+│   │   └── report_metrics.py
+│   ├── routes/
+│   │   └── main.py
+│   ├── services/
+│   │   ├── email_service.py
+│   │   ├── file_processor.py
+│   │   └── report_generator.py
+│   ├── static/
+│   │   ├── fonts/
+│   │   ├── images/
+│   │   └── reports/
+│   ├── templates/
+│   │   ├── index.html
+│   │   └── results.html
+│   ├── utils/
+│   │   └── text_processing.py
+│   └── __init__.py
+├── requirements.txt
+├── run.py
+└── README.md
+```
 
-Feel free to open issues, suggest new features, or submit pull requests.  
-Let's make data analysis faster, smarter, and more accessible together!
+## Contributing
 
-**Note:** To install Supabase support manually on Python 3.12, run:
-pip install git+https://github.com/supabase-community/supabase-py.git
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
